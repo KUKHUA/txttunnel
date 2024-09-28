@@ -19,11 +19,11 @@ var timeToLive = 5       // in minutes
 var cleanUpInterval = 10 // in minutes
 
 func main() {
-	http.HandleFunc("/", homePage)
-	http.HandleFunc("/tunnel", getTunnel)
-	http.HandleFunc("/tunnel/create", createTunnel)
-	http.HandleFunc("/tunnel/delete", deleteTunnel)
-	http.HandleFunc("/tunnel/send", sendToTunnel)
+	http.HandleFunc("/", withCORS(homePage))
+	http.HandleFunc("/tunnel", withCORS(getTunnel))
+	http.HandleFunc("/tunnel/create", withCORS(createTunnel))
+	http.HandleFunc("/tunnel/delete", withCORS(deleteTunnel))
+	http.HandleFunc("/tunnel/send", withCORS(sendToTunnel))
 
 	var err error
 	publicDataBase, err = badger.Open(badger.DefaultOptions("").WithInMemory(true))
@@ -44,6 +44,19 @@ func main() {
 
 func homePage(w http.ResponseWriter, r *http.Request) {
 	fmt.Fprintf(w, "Welcome to the TXTTunnel homepage!")
+}
+
+func withCORS(handler http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		handler(w, r)
+	}
 }
 
 func startCleanupTicker() {
