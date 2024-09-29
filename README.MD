@@ -68,6 +68,7 @@ TXTTunnel is a simple HTTP-based service for creating, sending, retrieving, and 
 1. Clone the repository.
 2. Install dependencies using `go get`.
 3. Run the server using `go run main.go`.
+4. Access the server using the default port `2427`.
 
 ## Configuration
 
