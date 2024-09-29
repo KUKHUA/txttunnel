@@ -39,7 +39,7 @@ func main() {
 
 	go startCleanupTicker()
 
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	log.Fatal(http.ListenAndServe(":2427", nil))
 }
 
 func homePage(w http.ResponseWriter, r *http.Request) {
@@ -229,13 +229,13 @@ func deleteTunnel(w http.ResponseWriter, r *http.Request) {
 }
 
 func createTunnel(w http.ResponseWriter, r *http.Request) {
-	tunnelId := rand.Int()
+	tunnelId := fmt.Sprintf("%02d%c%02d%c%02d%c", rand.Intn(100), 'A'+rune(rand.Intn(26)), rand.Intn(100), 'A'+rune(rand.Intn(26)), rand.Intn(100), 'A'+rune(rand.Intn(26)))
 	authToken := rand.Int()
 	hashedAuthToken := hashToken(fmt.Sprintf("%d", authToken))
 
 	err := publicDataBase.Update(func(txn *badger.Txn) error {
 		ttl := time.Duration(timeToLive) * time.Minute // Define the TTL duration
-		entry := badger.NewEntry([]byte(fmt.Sprintf("%d", tunnelId)), []byte("")).WithTTL(ttl)
+		entry := badger.NewEntry([]byte(tunnelId), []byte("")).WithTTL(ttl)
 		return txn.SetEntry(entry)
 	})
 
@@ -246,7 +246,7 @@ func createTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err2 := serverDataBase.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(fmt.Sprintf("%d", tunnelId)), []byte(hashedAuthToken))
+		return txn.Set([]byte(tunnelId), []byte(hashedAuthToken))
 	})
 
 	if err2 != nil {
@@ -256,11 +256,11 @@ func createTunnel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	response, err := json.Marshal(map[string]string{"id": fmt.Sprintf("%d", tunnelId), "auth": fmt.Sprintf("%d", authToken)})
+	response, err := json.Marshal(map[string]string{"id": tunnelId, "auth": fmt.Sprintf("%d", authToken)})
 	if err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
 	}
 	w.Write(response)
-	log.Printf("Tunnel %d has been created.", tunnelId)
+	log.Printf("Tunnel %s has been created.", tunnelId)
 }
