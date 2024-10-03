@@ -1,43 +1,31 @@
 package main
 
 import (
-	"crypto/sha512"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
-	"time"
-
-	badger "github.com/dgraph-io/badger/v4"
+	"sync"
 )
 
-var publicDataBase *badger.DB
-var serverDataBase *badger.DB
-var timeToLive = 5       // in minutes
-var cleanUpInterval = 10 // in minutes
+type Tunnel struct {
+	ID      string
+	Content string
+}
+
+var tunnels = make(map[string]*Tunnel)
+var tunnelsMutex = &sync.Mutex{}
+var clients = make(map[string][]chan string)
+var clientsMutex = &sync.Mutex{}
 
 func main() {
 	http.HandleFunc("/", withCORS(homePage))
-	http.HandleFunc("/tunnel", withCORS(getTunnel))
+	http.HandleFunc("/tunnel/stream", withCORS(getTunnel))
 	http.HandleFunc("/tunnel/create", withCORS(createTunnel))
-	http.HandleFunc("/tunnel/delete", withCORS(deleteTunnel))
 	http.HandleFunc("/tunnel/send", withCORS(sendToTunnel))
-
-	var err error
-	publicDataBase, err = badger.Open(badger.DefaultOptions("").WithInMemory(true))
-	if err != nil {
-		log.Fatal(err)
-	}
-	serverDataBase, err = badger.Open(badger.DefaultOptions("").WithInMemory(true))
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer publicDataBase.Close()
-	defer serverDataBase.Close()
-
-	go startCleanupTicker()
+	http.HandleFunc("/tunnel/send/post", withCORS(sendToTunnelPost))
 
 	log.Fatal(http.ListenAndServe(":2427", nil))
 }
@@ -59,43 +47,7 @@ func withCORS(handler http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
-func startCleanupTicker() {
-	ticker := time.NewTicker(time.Duration(cleanUpInterval) * time.Minute)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		cleanUp()
-	}
-}
-
-func cleanUp() {
-	// clean up expired tunnels
-	publicDataBase.Update(func(txn *badger.Txn) error {
-		opts := badger.DefaultIteratorOptions
-		opts.PrefetchValues = false
-		it := txn.NewIterator(opts)
-		defer it.Close()
-		for it.Rewind(); it.Valid(); it.Next() {
-			item := it.Item()
-			if item.ExpiresAt() <= uint64(time.Now().Unix()) {
-				err := txn.Delete(item.Key())
-				if err != nil {
-					return err
-				}
-			}
-		}
-		return nil
-	})
-}
-
-func hashToken(token string) string {
-	sha512Hasher := sha512.New()
-	sha512Hasher.Write([]byte(token))
-	return hex.EncodeToString(sha512Hasher.Sum(nil))
-}
-
 func sendToTunnel(w http.ResponseWriter, r *http.Request) {
-	// Send data to a tunnel
 	tunnelId := r.URL.Query().Get("id")
 	content := r.URL.Query().Get("content")
 	if tunnelId == "" {
@@ -107,29 +59,71 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := publicDataBase.Update(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(tunnelId))
-		if err != nil {
-			return err
-		}
-		return item.Value(func(val []byte) error {
-			// update the value of the tunnel with the data provided
-			entry := badger.NewEntry([]byte(tunnelId), []byte(content)).WithTTL(time.Duration(timeToLive) * time.Minute)
-			err2 := txn.SetEntry(entry)
-			if err2 != nil {
-				return err2
-			}
-			return nil
-		})
-	})
-
-	if err != nil {
+	tunnelsMutex.Lock()
+	tunnel, exists := tunnels[tunnelId]
+	if !exists {
+		tunnelsMutex.Unlock()
 		http.Error(w, "No tunnel with this id exists.", http.StatusInternalServerError)
-	} else {
-		log.Printf("Tunnel %s has been updated.", tunnelId)
-		fmt.Fprintf(w, "Tunnel %s has been updated.", tunnelId)
+		return
+	}
+	tunnel.Content = content
+	tunnelsMutex.Unlock()
+
+	clientsMutex.Lock()
+	for _, client := range clients[tunnelId] {
+		client <- content
+	}
+	clientsMutex.Unlock()
+
+	log.Printf("Tunnel %s has been updated.", tunnelId)
+	fmt.Fprintf(w, "Tunnel %s has been updated.", tunnelId)
+}
+
+func sendToTunnelPost(w http.ResponseWriter, r *http.Request) {
+	var requestData struct {
+		ID      string `json:"id"`
+		Content string `json:"content"`
 	}
 
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+
+	err = json.Unmarshal(body, &requestData)
+	if err != nil {
+		http.Error(w, "Failed to parse JSON", http.StatusBadRequest)
+		return
+	}
+
+	if requestData.ID == "" {
+		http.Error(w, "No tunnel id has been provided.", http.StatusBadRequest)
+		return
+	}
+	if requestData.Content == "" {
+		http.Error(w, "No content has been provided.", http.StatusBadRequest)
+		return
+	}
+
+	tunnelsMutex.Lock()
+	tunnel, exists := tunnels[requestData.ID]
+	if !exists {
+		tunnelsMutex.Unlock()
+		http.Error(w, "No tunnel with this id exists.", http.StatusInternalServerError)
+		return
+	}
+	tunnel.Content = requestData.Content
+	tunnelsMutex.Unlock()
+
+	clientsMutex.Lock()
+	for _, client := range clients[requestData.ID] {
+		client <- requestData.Content
+	}
+	clientsMutex.Unlock()
+
+	log.Printf("Tunnel %s has been updated.", requestData.ID)
+	fmt.Fprintf(w, "Tunnel %s has been updated.", requestData.ID)
 }
 
 func getTunnel(w http.ResponseWriter, r *http.Request) {
@@ -139,124 +133,51 @@ func getTunnel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := publicDataBase.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(tunnelId))
-		if err != nil {
-			return err
-		}
-		return item.Value(func(val []byte) error {
-			// return the value of the tunnel in json format
-			w.Header().Set("Content-Type", "application/json")
-			response, err := json.Marshal(map[string]string{"id": tunnelId, "content": string(val)})
-			if err != nil {
-				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
-				return err
-			}
-			w.Write(response)
-			log.Printf("Tunnel %s has been accessed.", tunnelId)
-			return nil
-		})
-	})
-	if err != nil {
+	tunnelsMutex.Lock()
+	_, exists := tunnels[tunnelId]
+	if !exists {
+		tunnelsMutex.Unlock()
 		http.Error(w, "No tunnel with this id exists.", http.StatusInternalServerError)
-	}
-}
-
-func deleteTunnel(w http.ResponseWriter, r *http.Request) {
-	tunnelId := r.URL.Query().Get("id")
-	authToken := r.URL.Query().Get("auth")
-	hashedAuthToken := hashToken(authToken)
-
-	if tunnelId == "" {
-		http.Error(w, "No tunnel id has been provided.\nPlease use ?id= to include the tunnel id.", http.StatusBadRequest)
-		log.Println("No tunnel id provided")
 		return
 	}
+	tunnelsMutex.Unlock()
 
-	if authToken == "" {
-		http.Error(w, "No authentication token has been provided.\nPlease use ?auth= to include the authentication token.", http.StatusBadRequest)
-		log.Println("No authentication token provided")
-		return
-	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
 
-	// Check if the authentication token is correct
-	err := serverDataBase.View(func(txn *badger.Txn) error {
-		item, err := txn.Get([]byte(tunnelId))
-		if err != nil {
-			return err
-		}
-		return item.Value(func(val []byte) error {
-			if string(val) != hashedAuthToken {
-				log.Printf("Incorrect authentication token for tunnel %s.", tunnelId)
-				return fmt.Errorf("incorrect authentication token")
+	clientChan := make(chan string)
+	clientsMutex.Lock()
+	clients[tunnelId] = append(clients[tunnelId], clientChan)
+	clientsMutex.Unlock()
+
+	for {
+		select {
+		case msg := <-clientChan:
+			fmt.Fprintf(w, "data: %s\n\n", msg)
+			w.(http.Flusher).Flush()
+		case <-r.Context().Done():
+			clientsMutex.Lock()
+			for i, client := range clients[tunnelId] {
+				if client == clientChan {
+					clients[tunnelId] = append(clients[tunnelId][:i], clients[tunnelId][i+1:]...)
+					break
+				}
 			}
-			return nil
-		})
-	})
-
-	if err != nil {
-		if err.Error() == "incorrect authentication token" {
-			http.Error(w, "Incorrect authentication token.", http.StatusUnauthorized)
+			clientsMutex.Unlock()
 			return
 		}
-		http.Error(w, "No tunnel with this id exists.", http.StatusNotFound)
-		log.Printf("No tunnel with id %s exists: %v", tunnelId, err)
-		return
 	}
-
-	err2 := publicDataBase.Update(func(txn *badger.Txn) error {
-		return txn.Delete([]byte(tunnelId))
-	})
-
-	if err2 != nil {
-		http.Error(w, "Unable to delete tunnel from public database.", http.StatusInternalServerError)
-		log.Printf("Unable to delete tunnel %s from public database: %v", tunnelId, err2)
-		return
-	}
-
-	err3 := serverDataBase.Update(func(txn *badger.Txn) error {
-		return txn.Delete([]byte(tunnelId))
-	})
-
-	if err3 != nil {
-		http.Error(w, "Unable to delete tunnel from server database.", http.StatusInternalServerError)
-		log.Printf("Unable to delete tunnel %s from server database: %v", tunnelId, err3)
-		return
-	}
-
-	log.Printf("Tunnel %s has been deleted.", tunnelId)
-	fmt.Fprintf(w, "Tunnel %s has been deleted.", tunnelId)
 }
 
 func createTunnel(w http.ResponseWriter, r *http.Request) {
 	tunnelId := fmt.Sprintf("%02d%c%02d%c%02d%c", rand.Intn(100), 'A'+rune(rand.Intn(26)), rand.Intn(100), 'A'+rune(rand.Intn(26)), rand.Intn(100), 'A'+rune(rand.Intn(26)))
-	authToken := rand.Int()
-	hashedAuthToken := hashToken(fmt.Sprintf("%d", authToken))
-
-	err := publicDataBase.Update(func(txn *badger.Txn) error {
-		ttl := time.Duration(timeToLive) * time.Minute // Define the TTL duration
-		entry := badger.NewEntry([]byte(tunnelId), []byte("")).WithTTL(ttl)
-		return txn.SetEntry(entry)
-	})
-
-	if err != nil {
-		log.Printf("Error updating public database: %v", err)
-		http.Error(w, "Unable to create tunnel in public database.", http.StatusInternalServerError)
-		return
-	}
-
-	err2 := serverDataBase.Update(func(txn *badger.Txn) error {
-		return txn.Set([]byte(tunnelId), []byte(hashedAuthToken))
-	})
-
-	if err2 != nil {
-		log.Printf("Error updating server database: %v", err2)
-		http.Error(w, "Unable to create tunnel in server database.", http.StatusInternalServerError)
-		return
-	}
+	tunnelsMutex.Lock()
+	tunnels[tunnelId] = &Tunnel{ID: tunnelId, Content: ""}
+	tunnelsMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
-	response, err := json.Marshal(map[string]string{"id": tunnelId, "auth": fmt.Sprintf("%d", authToken)})
+	response, err := json.Marshal(map[string]string{"id": tunnelId})
 	if err != nil {
 		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 		return
