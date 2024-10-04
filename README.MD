@@ -1,79 +1,18 @@
 # TXTTunnel
-TXTTunnel is a simple HTTP-based service for creating, sending, retrieving, and deleting text-based tunnels. It uses BadgerDB for in-memory storage and provides an API for interaction.
-
-## Features
-
-- Create a new tunnel with a unique ID and authentication token.
-- Send data to a tunnel.
-- Retrieve data from a tunnel.
-- Delete a tunnel using an authentication token.
-- Automatic cleanup of expired tunnels.
+TXTTunnel is a simple HTTP-based service for creating, sending, retrieving, and deleting text-based tunnels. It uses SSE (Server-Sent Events) for real-time communication between the client(s) and the server. Data sent to tunnels can either be sent via POST requests or through url parameters.
 
 ## Endpoints
-
-### Home Page
-
-- **URL:** `/`
-- **Method:** `GET`
-- **Description:** Displays a welcome message.
-
-### Create Tunnel
-
-- **URL:** `/tunnel/create`
-- **Method:** `POST`
-- **Description:** Creates a new tunnel and returns the tunnel ID and authentication token for deleting the tunnel.
-- **Response:**
-    ```json
-    {
-        "id": "tunnelId",
-        "auth": "authToken"
-    }
-    ```
-
-### Send to Tunnel
-
-- **URL:** `/tunnel/send`
-- **Method:** `POST`
-- **Query Parameters:**
-    - `id`: The tunnel ID.
-    - `content`: The content to send to the tunnel.
-- **Description:** Sends data to a tunnel.
-
-### Get Tunnel
-
-- **URL:** `/tunnel`
-- **Method:** `GET`
-- **Query Parameters:**
-    - `id`: The tunnel ID.
-- **Description:** Retrieves data from a tunnel.
-- **Response:**
-    ```json
-    {
-        "id": "tunnelId",
-        "content": "tunnelContent"
-    }
-    ```
-
-### Delete Tunnel
-
-- **URL:** `/tunnel/delete`
-- **Method:** `DELETE`
-- **Query Parameters:**
-    - `id`: The tunnel ID.
-    - `auth`: The authentication token.
-- **Description:** Deletes a tunnel using the authentication token.
-
-## Setup
-
-1. Clone the repository.
-2. Install dependencies using `go get`.
-3. Run the server using `go run main.go`.
-4. Access the server using the default port `2427`.
-
-## Configuration
-
-- `timeToLive`: Time to live for each tunnel in minutes (default: 5 minutes).
-- `cleanUpInterval`: Interval for cleaning up expired tunnels in minutes (default: 10 minutes).
+ - `/` - The home page of the service. 
+ - `/tunnel/stream?id=tunnelId` - The endpoint for streaming Server-Sent Events. The `tunnelId` parameter is the ID of the tunnel to stream.
+ - `/tunnel/create` - The endpoint for creating a new tunnel. It will return the ID of the newly created tunnel in JSON.
+ - `/tunnel/send?id=tunnelId&content=textData` - The endpoint for sending data to a tunnel. The `tunnelId` parameter is the ID of the tunnel to send data to. The content of the data is specified in the `content` parameter. This is the GET method.
+ - `/tunnel/send/post` - The endpoint for sending data to a tunnel via POST requests. Both the tunnel ID and the content of the data are specified in the POST request body. For example, the body of the POST request should be in JSON format:
+ ```json
+ {
+     "id": "tunnelId",
+     "content": "textData"
+ }
+```
 
 ## License
 
