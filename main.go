@@ -11,22 +11,22 @@ import (
 )
 
 type Tunnel struct {
-	ID      string
-	Content string
+	ID          string
+	Content     string
+	SubChannels map[string]string
 }
 
 var tunnels = make(map[string]*Tunnel)
 var tunnelsMutex = &sync.Mutex{}
-var clients = make(map[string][]chan string)
+var clients = make(map[string]map[string][]chan string)
 var clientsMutex = &sync.Mutex{}
 
 func main() {
+	log.Println("Starting server on port 2427")
 	http.HandleFunc("/", withCORS(homePage))
-	http.HandleFunc("/tunnel/stream", withCORS(getTunnel))
-	http.HandleFunc("/tunnel/create", withCORS(createTunnel))
-	http.HandleFunc("/tunnel/send", withCORS(sendToTunnel))
-	http.HandleFunc("/tunnel/send/post", withCORS(sendToTunnelPost))
-
+	http.HandleFunc("/api/v2/tunnel/create", withCORS(createTunnel))
+	http.HandleFunc("/api/v2/tunnel/stream", withCORS(streamTunnelContent))
+	http.HandleFunc("/api/v2/tunnel/send", withCORS(sendToTunnel))
 	log.Fatal(http.ListenAndServe(":2427", nil))
 }
 
@@ -48,41 +48,10 @@ func withCORS(handler http.HandlerFunc) http.HandlerFunc {
 }
 
 func sendToTunnel(w http.ResponseWriter, r *http.Request) {
-	tunnelId := r.URL.Query().Get("id")
-	content := r.URL.Query().Get("content")
-	if tunnelId == "" {
-		http.Error(w, "No tunnel id has been provided.\nPlease use ?id= to include the tunnel id.", http.StatusBadRequest)
-		return
-	}
-	if content == "" {
-		http.Error(w, "No content has been provided.\nPlease use ?content= to include the content.", http.StatusBadRequest)
-		return
-	}
-
-	tunnelsMutex.Lock()
-	tunnel, exists := tunnels[tunnelId]
-	if !exists {
-		tunnelsMutex.Unlock()
-		http.Error(w, "No tunnel with this id exists.", http.StatusInternalServerError)
-		return
-	}
-	tunnel.Content = content
-	tunnelsMutex.Unlock()
-
-	clientsMutex.Lock()
-	for _, client := range clients[tunnelId] {
-		client <- content
-	}
-	clientsMutex.Unlock()
-
-	log.Printf("Tunnel %s has been updated.", tunnelId)
-	fmt.Fprintf(w, "Tunnel %s has been updated.", tunnelId)
-}
-
-func sendToTunnelPost(w http.ResponseWriter, r *http.Request) {
 	var requestData struct {
-		ID      string `json:"id"`
-		Content string `json:"content"`
+		ID         string `json:"id"`
+		Content    string `json:"content"`
+		SubChannel string `json:"subChannel"`
 	}
 
 	body, err := io.ReadAll(r.Body)
@@ -101,8 +70,14 @@ func sendToTunnelPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No tunnel id has been provided.", http.StatusBadRequest)
 		return
 	}
+
 	if requestData.Content == "" {
 		http.Error(w, "No content has been provided.", http.StatusBadRequest)
+		return
+	}
+
+	if requestData.SubChannel == "" {
+		http.Error(w, "No subChannel has been provided.", http.StatusBadRequest)
 		return
 	}
 
@@ -113,23 +88,28 @@ func sendToTunnelPost(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "No tunnel with this id exists.", http.StatusInternalServerError)
 		return
 	}
-	tunnel.Content = requestData.Content
+	tunnel.SubChannels[requestData.SubChannel] = requestData.Content
 	tunnelsMutex.Unlock()
 
 	clientsMutex.Lock()
-	for _, client := range clients[requestData.ID] {
+	for _, client := range clients[requestData.ID][requestData.SubChannel] {
 		client <- requestData.Content
 	}
 	clientsMutex.Unlock()
 
-	log.Printf("Tunnel %s has been updated.", requestData.ID)
-	fmt.Fprintf(w, "Tunnel %s has been updated.", requestData.ID)
+	log.Printf("Tunnel %s subChannel %s has been updated.", requestData.ID, requestData.SubChannel)
+	fmt.Fprintf(w, "Tunnel %s subChannel %s has been updated.", requestData.ID, requestData.SubChannel)
 }
 
-func getTunnel(w http.ResponseWriter, r *http.Request) {
+func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
 	tunnelId := r.URL.Query().Get("id")
+	subChannel := r.URL.Query().Get("subChannel")
 	if tunnelId == "" {
 		http.Error(w, "No tunnel id has been provided.\nPlease use ?id= to include the tunnel id.", http.StatusBadRequest)
+		return
+	}
+	if subChannel == "" {
+		http.Error(w, "No subChannel has been provided.\nPlease use ?subChannel= to include the subChannel.", http.StatusBadRequest)
 		return
 	}
 
@@ -148,7 +128,10 @@ func getTunnel(w http.ResponseWriter, r *http.Request) {
 
 	clientChan := make(chan string)
 	clientsMutex.Lock()
-	clients[tunnelId] = append(clients[tunnelId], clientChan)
+	if clients[tunnelId] == nil {
+		clients[tunnelId] = make(map[string][]chan string)
+	}
+	clients[tunnelId][subChannel] = append(clients[tunnelId][subChannel], clientChan)
 	clientsMutex.Unlock()
 
 	for {
@@ -158,9 +141,9 @@ func getTunnel(w http.ResponseWriter, r *http.Request) {
 			w.(http.Flusher).Flush()
 		case <-r.Context().Done():
 			clientsMutex.Lock()
-			for i, client := range clients[tunnelId] {
+			for i, client := range clients[tunnelId][subChannel] {
 				if client == clientChan {
-					clients[tunnelId] = append(clients[tunnelId][:i], clients[tunnelId][i+1:]...)
+					clients[tunnelId][subChannel] = append(clients[tunnelId][subChannel][:i], clients[tunnelId][subChannel][i+1:]...)
 					break
 				}
 			}
@@ -173,7 +156,7 @@ func getTunnel(w http.ResponseWriter, r *http.Request) {
 func createTunnel(w http.ResponseWriter, r *http.Request) {
 	tunnelId := fmt.Sprintf("%02d%c%02d%c%02d%c", rand.Intn(100), 'A'+rune(rand.Intn(26)), rand.Intn(100), 'A'+rune(rand.Intn(26)), rand.Intn(100), 'A'+rune(rand.Intn(26)))
 	tunnelsMutex.Lock()
-	tunnels[tunnelId] = &Tunnel{ID: tunnelId, Content: ""}
+	tunnels[tunnelId] = &Tunnel{ID: tunnelId, Content: "", SubChannels: make(map[string]string)}
 	tunnelsMutex.Unlock()
 
 	w.Header().Set("Content-Type", "application/json")
