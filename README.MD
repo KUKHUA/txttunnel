@@ -1,19 +1,100 @@
-# TXTTunnel
-TXTTunnel is a simple HTTP-based service for creating, sending, retrieving, and deleting text-based tunnels. It uses SSE (Server-Sent Events) for real-time communication between the client(s) and the server. Data sent to tunnels can either be sent via POST requests or through url parameters.
+## Overview
+TXTTunnel is a simple HTTP-based service for creating, sending, retrieving, and deleting text-based tunnels. It uses SSE (Server-Sent Events) for real-time communication between the client(s) and the server. Data sent to tunnels can either be sent via POST requests or through URL parameters.
 
 ## Endpoints
- - `/` - The home page of the service. 
- - `/tunnel/stream?id=tunnelId` - The endpoint for streaming Server-Sent Events. The `tunnelId` parameter is the ID of the tunnel to stream.
- - `/tunnel/create` - The endpoint for creating a new tunnel. It will return the ID of the newly created tunnel in JSON.
- - `/tunnel/send?id=tunnelId&content=textData` - The endpoint for sending data to a tunnel. The `tunnelId` parameter is the ID of the tunnel to send data to. The content of the data is specified in the `content` parameter. This is the GET method.
- - `/tunnel/send/post` - The endpoint for sending data to a tunnel via POST requests. Both the tunnel ID and the content of the data are specified in the POST request body. For example, the body of the POST request should be in JSON format:
- ```json
- {
-     "id": "tunnelId",
-     "content": "textData"
- }
-```
+
+### Home Page
+- **Endpoint:** `/`
+- **Method:** `GET`
+- **Description:** Displays the homepage of the TXTTunnel service.
+- **Response:** 
+    - `200 OK` with a welcome message.
+
+### Create Tunnel
+- **Endpoint:** `/api/v3/tunnel/create`
+- **Methods:** `POST`, `GET`
+- **Description:** Creates a new tunnel.
+- **Request (POST):**
+    - **Body:** JSON object containing the `id` field.
+    ```json
+    {
+            "id": "tunnelId"
+    }
+    ```
+- **Request (GET):**
+    - **Query Parameters:** 
+        - `id` (optional): If not provided, a random ID will be generated.
+- **Response:**
+    - `200 OK` with a JSON object containing the `id` of the created tunnel.
+    ```json
+    {
+            "id": "tunnelId"
+    }
+    ```
+
+### Stream Tunnel Content
+- **Endpoint:** `/api/v3/tunnel/stream`
+- **Methods:** `GET`, `POST`
+- **Description:** Streams the content of a tunnel using Server-Sent Events (SSE).
+- **Request (GET):**
+    - **Query Parameters:**
+        - `id`: The ID of the tunnel.
+        - `subChannel` (optional): The subchannel to stream. Defaults to `main`.
+- **Request (POST):**
+    - **Body:** JSON object containing the `id` and `subChannel` fields.
+    ```json
+    {
+            "id": "tunnelId",
+            "subChannel": "subChannelName"
+    }
+    ```
+- **Response:**
+    - `200 OK` with SSE data.
+
+### Get Tunnel Content
+- **Endpoint:** `/api/v3/tunnel/get`
+- **Methods:** `GET`, `POST`
+- **Description:** Retrieves the content of a tunnel.
+- **Request (GET):**
+    - **Query Parameters:**
+        - `id`: The ID of the tunnel.
+        - `subChannel` (optional): The subchannel to retrieve. Defaults to `main`.
+- **Request (POST):**
+    - **Body:** JSON object containing the `id` and `subChannel` fields.
+    ```json
+    {
+            "id": "tunnelId",
+            "subChannel": "subChannelName"
+    }
+    ```
+- **Response:**
+    - `200 OK` with a JSON object containing the `content` of the specified subchannel.
+    ```json
+    {
+            "content": "textData"
+    }
+    ```
+
+### Send to Tunnel
+- **Endpoint:** `/api/v3/tunnel/send`
+- **Methods:** `POST`, `GET`
+- **Description:** Sends data to a tunnel.
+- **Request (POST):**
+    - **Body:** JSON object containing the `id`, `subChannel`, and `content` fields.
+    ```json
+    {
+            "id": "tunnelId",
+            "subChannel": "subChannelName",
+            "content": "textData"
+    }
+    ```
+- **Request (GET):**
+    - **Query Parameters:**
+        - `id`: The ID of the tunnel.
+        - `subChannel`: The subchannel to send data to.
+        - `content`: The content to send.
+- **Response:**
+    - `200 OK` if the data is successfully sent.
 
 ## License
-
-This project is licensed under Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) license. For more information, see [the file](LICENSE).
+This project is licensed under the Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) license. For more information, see the `LICENSE` file.

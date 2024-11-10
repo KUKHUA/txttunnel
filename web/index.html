@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TXTTunnel Documentation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 0;
+        }
+        header, footer {
+            background-color: #f4f4f4;
+            padding: 1em;
+            text-align: center;
+        }
+        main {
+            padding: 1em;
+        }
+        h2, h3 {
+            color: #333;
+        }
+        ul {
+            list-style-type: none;
+            padding: 0;
+        }
+        li {
+            margin-bottom: 0.5em;
+        }
+        code {
+            background-color: #f4f4f4;
+            padding: 0.2em;
+        }
+        pre {
+            background-color: #f4f4f4;
+            padding: 1em;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+
+<body>
+    <header>
+        <h1>TXTTunnel API Documentation</h1>
+    </header>
+    <main>
+        <h1>Welcome to TXTTunnel</h1>
+        <p>This is the default homepage of TXTTunnel</p>
+        <h2 id="overview">Overview</h2>
+        <p>TXTTunnel is a simple HTTP-based service for creating, sending, retrieving, and deleting text-based tunnels. It uses SSE (Server-Sent Events) for real-time communication between the client(s) and the server. Data sent to tunnels can either be
+            sent via POST requests or through URL parameters.</p>
+        <h2 id="endpoints">Endpoints</h2>
+        <h3 id="home-page">Home Page</h3>
+        <ul>
+            <li><strong>Endpoint:</strong> <code>/</code></li>
+            <li><strong>Method:</strong> <code>GET</code></li>
+            <li><strong>Description:</strong> Displays the homepage of the TXTTunnel service.</li>
+            <li><strong>Response:</strong>
+                <ul>
+                    <li><code>200 OK</code> with a welcome message.</li>
+                </ul>
+            </li>
+        </ul>
+        <h3 id="create-tunnel">Create Tunnel</h3>
+        <ul>
+            <li><strong>Endpoint:</strong> <code>/api/v3/tunnel/create</code></li>
+            <li><strong>Methods:</strong> <code>POST</code>, <code>GET</code></li>
+            <li><strong>Description:</strong> Creates a new tunnel.</li>
+            <li><strong>Request (POST):</strong>
+                <ul>
+                    <li><strong>Body:</strong> JSON object containing the <code>id</code> field.<pre><code class="lang-json">{
+            <span class="hljs-attr">"id"</span>: <span class="hljs-string">"tunnelId"</span>
+        }
+        </code></pre>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Request (GET):</strong>
+                <ul>
+                    <li><strong>Query Parameters:</strong>
+                        <ul>
+                            <li><code>id</code> (optional): If not provided, a random ID will be generated.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Response:</strong>
+                <ul>
+                    <li><code>200 OK</code> with a JSON object containing the <code>id</code> of the created tunnel.<pre><code class="lang-json">{
+            <span class="hljs-attr">"id"</span>: <span class="hljs-string">"tunnelId"</span>
+        }
+        </code></pre>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+        <h3 id="stream-tunnel-content">Stream Tunnel Content</h3>
+        <ul>
+            <li><strong>Endpoint:</strong> <code>/api/v3/tunnel/stream</code></li>
+            <li><strong>Methods:</strong> <code>GET</code>, <code>POST</code></li>
+            <li><strong>Description:</strong> Streams the content of a tunnel using Server-Sent Events (SSE).</li>
+            <li><strong>Request (GET):</strong>
+                <ul>
+                    <li><strong>Query Parameters:</strong>
+                        <ul>
+                            <li><code>id</code>: The ID of the tunnel.</li>
+                            <li><code>subChannel</code> (optional): The subchannel to stream. Defaults to <code>main</code>.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Request (POST):</strong>
+                <ul>
+                    <li><strong>Body:</strong> JSON object containing the <code>id</code> and <code>subChannel</code> fields.<pre><code class="lang-json">{
+            <span class="hljs-attr">"id"</span>: <span class="hljs-string">"tunnelId"</span>,
+            <span class="hljs-attr">"subChannel"</span>: <span class="hljs-string">"subChannelName"</span>
+        }
+        </code></pre>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Response:</strong>
+                <ul>
+                    <li><code>200 OK</code> with SSE data.</li>
+                </ul>
+            </li>
+        </ul>
+        <h3 id="get-tunnel-content">Get Tunnel Content</h3>
+        <ul>
+            <li><strong>Endpoint:</strong> <code>/api/v3/tunnel/get</code></li>
+            <li><strong>Methods:</strong> <code>GET</code>, <code>POST</code></li>
+            <li><strong>Description:</strong> Retrieves the content of a tunnel.</li>
+            <li><strong>Request (GET):</strong>
+                <ul>
+                    <li><strong>Query Parameters:</strong>
+                        <ul>
+                            <li><code>id</code>: The ID of the tunnel.</li>
+                            <li><code>subChannel</code> (optional): The subchannel to retrieve. Defaults to <code>main</code>.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Request (POST):</strong>
+                <ul>
+                    <li><strong>Body:</strong> JSON object containing the <code>id</code> and <code>subChannel</code> fields.<pre><code class="lang-json">{
+            <span class="hljs-attr">"id"</span>: <span class="hljs-string">"tunnelId"</span>,
+            <span class="hljs-attr">"subChannel"</span>: <span class="hljs-string">"subChannelName"</span>
+        }
+        </code></pre>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Response:</strong>
+                <ul>
+                    <li><code>200 OK</code> with a JSON object containing the <code>content</code> of the specified subchannel.<pre><code class="lang-json">{
+            <span class="hljs-attr">"content"</span>: <span class="hljs-string">"textData"</span>
+        }
+        </code></pre>
+                    </li>
+                </ul>
+            </li>
+        </ul>
+        <h3 id="send-to-tunnel">Send to Tunnel</h3>
+        <ul>
+            <li><strong>Endpoint:</strong> <code>/api/v3/tunnel/send</code></li>
+            <li><strong>Methods:</strong> <code>POST</code>, <code>GET</code></li>
+            <li><strong>Description:</strong> Sends data to a tunnel.</li>
+            <li><strong>Request (POST):</strong>
+                <ul>
+                    <li><strong>Body:</strong> JSON object containing the <code>id</code>, <code>subChannel</code>, and <code>content</code> fields.<pre><code class="lang-json">{
+            <span class="hljs-attr">"id"</span>: <span class="hljs-string">"tunnelId"</span>,
+            <span class="hljs-attr">"subChannel"</span>: <span class="hljs-string">"subChannelName"</span>,
+            <span class="hljs-attr">"content"</span>: <span class="hljs-string">"textData"</span>
+        }
+        </code></pre>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Request (GET):</strong>
+                <ul>
+                    <li><strong>Query Parameters:</strong>
+                        <ul>
+                            <li><code>id</code>: The ID of the tunnel.</li>
+                            <li><code>subChannel</code>: The subchannel to send data to.</li>
+                            <li><code>content</code>: The content to send.</li>
+                        </ul>
+                    </li>
+                </ul>
+            </li>
+            <li><strong>Response:</strong>
+                <ul>
+                    <li><code>200 OK</code> if the data is successfully sent.</li>
+                </ul>
+            </li>
+        </ul>
+    </main>
+    <footer>
+        <h2 id="license">License</h2>
+        <p>This project is licensed under the Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0) license. For more information, see the <a href="/LICENSE">LICENSE</a> file.</p>
+    </footer>
+</body>
+
+</html>
