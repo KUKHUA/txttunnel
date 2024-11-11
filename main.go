@@ -33,11 +33,12 @@ func main() {
 }
 
 func giveLicense(w http.ResponseWriter, r *http.Request) {
+	log.Println("Serving LICENSE file")
 	http.ServeFile(w, r, "web/LICENSE.txt")
 }
 
 func homePage(w http.ResponseWriter, r *http.Request) {
-	// Return the home page /web/index.html
+	log.Println("Serving home page")
 	http.ServeFile(w, r, "web/index.html")
 }
 
@@ -69,14 +70,15 @@ func getTunnelContent(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == http.MethodPost {
 		requestBody, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Println("Failed to read the request body:", err)
 			http.Error(w, "Failed to read the request body", http.StatusInternalServerError)
 			return
 		}
 
-		// get 'id' from the request body JSON
 		var requestBodyJSON map[string]string
 		err = json.Unmarshal(requestBody, &requestBodyJSON)
 		if err != nil {
+			log.Println("Failed to parse the request body:", err)
 			http.Error(w, "Failed to parse the request body", http.StatusInternalServerError)
 			return
 		}
@@ -103,6 +105,7 @@ func getTunnelContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if tunnelId == "" {
+		log.Println("The request must contain a valid 'id' parameter or field")
 		http.Error(w, "The request must contain a valid 'id' parameter or field", http.StatusBadRequest)
 		return
 	}
@@ -111,20 +114,22 @@ func getTunnelContent(w http.ResponseWriter, r *http.Request) {
 	tunnel, exists := tunnels[tunnelId]
 	if !exists {
 		tunnelsMutex.Unlock()
+		log.Println("No tunnel with this id exists:", tunnelId)
 		http.Error(w, "No tunnel with this id exists.", http.StatusNotFound)
 		return
 	}
-	// Return the content of the subchannel if it exists
 	if tunnel.SubChannels[subChannel] != "" {
 		w.Header().Set("Content-Type", "application/json")
 		response, err := json.Marshal(map[string]string{"content": tunnel.SubChannels[subChannel]})
 		if err != nil {
+			log.Println("Failed to encode response:", err)
 			http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 			return
 		}
 		w.Write(response)
 	}
 	tunnelsMutex.Unlock()
+	log.Println("Retrieved content for tunnel:", tunnelId, "subChannel:", subChannel)
 }
 
 func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
@@ -142,14 +147,15 @@ func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
 	} else if r.Method == http.MethodPost {
 		requestBody, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Println("Failed to read the request body:", err)
 			http.Error(w, "Failed to read the request body", http.StatusInternalServerError)
 			return
 		}
 
-		// get 'id' from the request body JSON
 		var requestBodyJSON map[string]string
 		err = json.Unmarshal(requestBody, &requestBodyJSON)
 		if err != nil {
+			log.Println("Failed to parse the request body:", err)
 			http.Error(w, "Failed to parse the request body", http.StatusInternalServerError)
 			return
 		}
@@ -176,6 +182,7 @@ func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if tunnelId == "" {
+		log.Println("The request must contain a valid 'id' parameter or field")
 		http.Error(w, "The request must contain a valid 'id' parameter or field", http.StatusBadRequest)
 		return
 	}
@@ -184,6 +191,7 @@ func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
 	_, exists := tunnels[tunnelId]
 	if !exists {
 		tunnelsMutex.Unlock()
+		log.Println("No tunnel with this id exists:", tunnelId)
 		http.Error(w, "No tunnel with this id exists.", http.StatusNotFound)
 		return
 	}
@@ -201,6 +209,8 @@ func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
 	clients[tunnelId][subChannel] = append(clients[tunnelId][subChannel], clientChan)
 	clientsMutex.Unlock()
 
+	log.Println("Client connected to stream for tunnel:", tunnelId, "subChannel:", subChannel)
+
 	for {
 		select {
 		case msg := <-clientChan:
@@ -215,24 +225,25 @@ func streamTunnelContent(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			clientsMutex.Unlock()
+			log.Println("Client disconnected from stream for tunnel:", tunnelId, "subChannel:", subChannel)
 			return
 		}
 	}
 }
 
 func sendToTunnel(w http.ResponseWriter, r *http.Request) {
-	// we need the id, subchannel and content
 	if r.Method == http.MethodPost {
 		requestBody, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Println("Failed to read the request body:", err)
 			http.Error(w, "Failed to read the request body", http.StatusInternalServerError)
 			return
 		}
 
-		// get 'id', 'subchannel' and 'content' from the request body JSON
 		var requestBodyJSON map[string]string
 		err = json.Unmarshal(requestBody, &requestBodyJSON)
 		if err != nil {
+			log.Println("Failed to parse the request body:", err)
 			http.Error(w, "Failed to parse the request body", http.StatusInternalServerError)
 			return
 		}
@@ -250,6 +261,7 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if requestBodyJSON["id"] == "" || requestBodyJSON["subChannel"] == "" || requestBodyJSON["content"] == "" {
+			log.Println("The request body must contain a valid 'id', 'subChannel' and 'content' field")
 			http.Error(w, "The request body must contain a valid 'id', 'subChannel' and 'content' field", http.StatusBadRequest)
 			return
 		}
@@ -258,6 +270,7 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		tunnel, exists := tunnels[requestBodyJSON["id"]]
 		if !exists {
 			tunnelsMutex.Unlock()
+			log.Println("No tunnel with this id exists:", requestBodyJSON["id"])
 			http.Error(w, "No tunnel with this id exists.", http.StatusNotFound)
 			return
 		}
@@ -271,6 +284,7 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		clientsMutex.Unlock()
 
 		w.WriteHeader(http.StatusOK)
+		log.Println("Sent content to tunnel:", requestBodyJSON["id"], "subChannel:", requestBodyJSON["subChannel"])
 	} else if r.Method == http.MethodGet {
 		id := r.URL.Query().Get("id")
 		subChannel := r.URL.Query().Get("subChannel")
@@ -285,7 +299,8 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if id == "" || subChannel == "" || content == "" {
-			http.Error(w, "The request must contain a valid 'id', 'subChannel' and 'content' parmerters", http.StatusBadRequest)
+			log.Println("The request must contain a valid 'id', 'subChannel' and 'content' parameters")
+			http.Error(w, "The request must contain a valid 'id', 'subChannel' and 'content' parameters", http.StatusBadRequest)
 			return
 		}
 
@@ -293,6 +308,7 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		tunnel, exists := tunnels[id]
 		if !exists {
 			tunnelsMutex.Unlock()
+			log.Println("No tunnel with this id exists:", id)
 			http.Error(w, "No tunnel with this id exists.", http.StatusNotFound)
 			return
 		}
@@ -305,31 +321,35 @@ func sendToTunnel(w http.ResponseWriter, r *http.Request) {
 		}
 		clientsMutex.Unlock()
 		w.WriteHeader(http.StatusOK)
+		log.Println("Sent content to tunnel:", id, "subChannel:", subChannel)
 	} else {
-		http.Error(w, "Method not allowed. Only POST requests are allowed.", http.StatusMethodNotAllowed)
+		log.Println("Method not allowed. Only POST and GET requests are allowed.")
+		http.Error(w, "Method not allowed. Only POST and GET requests are allowed.", http.StatusMethodNotAllowed)
 		return
 	}
 }
 
 func createTunnel(w http.ResponseWriter, r *http.Request) {
-	// check if it's a POST or GET request
 	if r.Method == http.MethodPost {
 		requestBody, err := io.ReadAll(r.Body)
 		if err != nil {
+			log.Println("Failed to read the request body:", err)
 			http.Error(w, "Failed to read the request body", http.StatusInternalServerError)
 			return
 		}
 
-		// get 'id' from the request body JSON
 		var requestBodyJSON map[string]string
 		err = json.Unmarshal(requestBody, &requestBodyJSON)
 		if err != nil {
+			log.Println("Failed to parse the request body:", err)
 			http.Error(w, "Failed to parse the request body", http.StatusInternalServerError)
 			return
 		}
 
 		if requestBodyJSON["id"] == "" {
-			http.Error(w, "The request body must contain a vaild 'id' field", http.StatusBadRequest)
+			log.Println("The request body must contain a valid 'id' field")
+			http.Error(w, "The request body must contain a valid 'id' field", http.StatusBadRequest)
+			return
 		}
 
 		tunnelsMutex.Lock()
@@ -337,18 +357,18 @@ func createTunnel(w http.ResponseWriter, r *http.Request) {
 		tunnelsMutex.Unlock()
 
 		response, err := json.Marshal(map[string]string{"id": requestBodyJSON["id"]})
-
 		if err != nil {
+			log.Println("Error creating the tunnel:", err)
 			http.Error(w, "Error creating the tunnel", http.StatusInternalServerError)
 			return
 		}
 
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(response)
+		log.Println("Created tunnel with ID:", requestBodyJSON["id"])
 	} else if r.Method == http.MethodGet {
 		if r.URL.Query().Get("id") == "" {
-			// The user used the GET method but didn't provide an ID
-			tunnelId := generateRandomID(4)
+			tunnelId := generateRandomID(6)
 			tunnelsMutex.Lock()
 			tunnels[tunnelId] = &Tunnel{ID: tunnelId, Content: "", SubChannels: make(map[string]string)}
 			tunnelsMutex.Unlock()
@@ -356,31 +376,35 @@ func createTunnel(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			response, err := json.Marshal(map[string]string{"id": tunnelId})
 			if err != nil {
+				log.Println("Failed to encode response:", err)
 				http.Error(w, "Failed to encode response", http.StatusInternalServerError)
 				return
 			}
 			w.Write(response)
+			log.Println("Created tunnel with random ID:", tunnelId)
 		} else {
-			// The user used the GET method and provided an ID
 			tunnelsMutex.Lock()
 			tunnels[r.URL.Query().Get("id")] = &Tunnel{ID: r.URL.Query().Get("id"), Content: "", SubChannels: make(map[string]string)}
 			tunnelsMutex.Unlock()
 			response, err := json.Marshal(map[string]string{"id": r.URL.Query().Get("id")})
 			if err != nil {
+				log.Println("Error creating the tunnel:", err)
 				http.Error(w, "Error creating the tunnel", http.StatusInternalServerError)
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.Write(response)
+			log.Println("Created tunnel with ID:", r.URL.Query().Get("id"))
 		}
 	} else {
+		log.Println("Method not allowed. Only POST and GET requests are allowed.")
 		http.Error(w, "Method not allowed. Only POST and GET requests are allowed.", http.StatusMethodNotAllowed)
 		return
 	}
 }
 
 func generateRandomID(amount int) string {
-	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ123456789`~!@#$%^&*()_-+=[]{}|;:',.<>/?"
+	const charset = "ABCDEFGHJKLMNPQRSTUVWXYZ123456789!@#$%&*_-+=;:,.<>/?"
 	b := make([]byte, amount)
 	for i := range b {
 		b[i] = charset[rand.Intn(len(charset))]
